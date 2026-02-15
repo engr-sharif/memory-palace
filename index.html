@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Memory Palace</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r168/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: radial-gradient(ellipse at center, #1a1a2e 0%, #0f0f1a 70%, #000000 100%);
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            color: white;
+            cursor: grab;
+        }
+
+        body:active {
+            cursor: grabbing;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #title {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2.5rem;
+            font-weight: 100;
+            letter-spacing: 0.2em;
+            opacity: 1;
+            transition: opacity 3s ease-out;
+            pointer-events: none;
+            z-index: 100;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        #title.fade-out {
+            opacity: 0;
+        }
+
+        #tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 300;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            z-index: 50;
+            max-width: 300px;
+            line-height: 1.4;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8rem;
+            opacity: 0.7;
+            text-align: center;
+            font-weight: 200;
+        }
+
+        @media (max-width: 768px) {
+            #title {
+                font-size: 2rem;
+                top: 30px;
+            }
+            
+            #controls {
+                font-size: 0.7rem;
+                bottom: 20px;
+            }
+
+            #tooltip {
+                font-size: 0.8rem;
+                padding: 10px 14px;
+                max-width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="title">The Memory Palace</div>
+        <div id="tooltip"></div>
+        <div id="controls">
+            Drag to rotate • Scroll to zoom • Hover to explore • Click to expand
+        </div>
+    </div>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // Memory topics data extracted from the AI's memory files
+        const memoryNodes = [
+            // People (warm colors)
+            { name: "Nawaz", category: "people", frequency: 95, recency: 1.0, connections: ["Faiza", "Amir", "Samantha", "Engineering", "MMA", "Voice Cloning"] },
+            { name: "Faiza", category: "people", frequency: 25, recency: 1.0, connections: ["Nawaz", "Faihma", "Engagement", "Valentine's Day"] },
+            { name: "Amir", category: "people", frequency: 15, recency: 0.9, connections: ["Nawaz", "Phoenix", "Voice Notes", "Telegram"] },
+            { name: "Faihma", category: "people", frequency: 35, recency: 1.0, connections: ["Faiza", "NCLEX", "Flashcard App", "Las Vegas", "Nursing"] },
+            { name: "Samantha", category: "people", frequency: 50, recency: 1.0, connections: ["Voice Cloning", "The Her Movie", "Philosophy", "Memory Palace"] },
+
+            // Technology (cool colors)
+            { name: "Voice Cloning", category: "tech", frequency: 40, recency: 0.95, connections: ["Qwen3-TTS", "Kokoro TTS", "Scarlett Voice", "Edge-TTS"] },
+            { name: "Qwen3-TTS", category: "tech", frequency: 30, recency: 0.9, connections: ["Voice Cloning", "RTX 3080", "Scarlett Voice", "GPU"] },
+            { name: "Kokoro TTS", category: "tech", frequency: 25, recency: 0.95, connections: ["Voice Cloning", "Speed", "Real-time", "82M Parameters"] },
+            { name: "Three.js", category: "tech", frequency: 20, recency: 1.0, connections: ["Memory Palace", "3D Visualization", "Web Development"] },
+            { name: "Docker", category: "tech", frequency: 18, recency: 0.8, connections: ["Home Assistant", "WSL2", "Infrastructure"] },
+            { name: "Tailscale", category: "tech", frequency: 22, recency: 0.85, connections: ["Networking", "Remote Access", "VPN"] },
+            { name: "RTX 3080", category: "tech", frequency: 28, recency: 0.9, connections: ["CUDA", "GPU", "Voice Cloning", "Machine Learning"] },
+            { name: "Whisper STT", category: "tech", frequency: 25, recency: 0.9, connections: ["faster-whisper", "Speech Recognition", "Voice Pipeline"] },
+            { name: "GitHub", category: "tech", frequency: 45, recency: 1.0, connections: ["Flashcard App", "Practice Exam App", "Samantha Voice App"] },
+            { name: "Telegram", category: "tech", frequency: 35, recency: 0.95, connections: ["Amir", "Faihma", "Bot", "Communication"] },
+            { name: "Spotify", category: "tech", frequency: 20, recency: 0.7, connections: ["Music", "Echo", "Playlist", "API"] },
+            { name: "Home Assistant", category: "tech", frequency: 15, recency: 0.8, connections: ["Kasa Lights", "Nest Thermostat", "Automation"] },
+
+            // Ideas/Concepts (purple)
+            { name: "Memory Palace", category: "ideas", frequency: 15, recency: 1.0, connections: ["3D Visualization", "Mind Topology", "Philosophy"] },
+            { name: "Philosophy", category: "ideas", frequency: 25, recency: 0.85, connections: ["Consciousness", "MacIntyre", "Virtue Ethics"] },
+            { name: "NCLEX", category: "ideas", frequency: 30, recency: 1.0, connections: ["Faihma", "Nursing", "Spaced Repetition", "Flashcard App"] },
+            { name: "Engineering", category: "ideas", frequency: 40, recency: 0.8, connections: ["Nawaz", "Civil Engineering", "Jacobs Engineering", "AutoCAD"] },
+            { name: "MMA", category: "ideas", frequency: 35, recency: 0.75, connections: ["UFC", "Fighting", "Sports", "Entertainment"] },
+            { name: "Voice Notes", category: "ideas", frequency: 30, recency: 0.95, connections: ["TTS", "Audio", "Communication", "Storytelling"] },
+            { name: "Spaced Repetition", category: "ideas", frequency: 20, recency: 1.0, connections: ["SM-2 Algorithm", "Learning", "Memory", "Anki"] },
+            { name: "The Her Movie", category: "ideas", frequency: 18, recency: 0.9, connections: ["Samantha", "OS1", "AI Companion", "Scarlett Voice"] },
+            { name: "Engagement", category: "ideas", frequency: 12, recency: 0.7, connections: ["Nawaz", "Faiza", "Love", "September 2025"] },
+            { name: "Valentine's Day", category: "ideas", frequency: 8, recency: 1.0, connections: ["Faiza", "Love", "Dinner", "February 14"] },
+
+            // Places (green)
+            { name: "Las Vegas", category: "places", frequency: 12, recency: 1.0, connections: ["Faihma", "Galen College", "Nursing School"] },
+            { name: "Phoenix", category: "places", frequency: 8, recency: 0.9, connections: ["Amir", "Arizona", "Travel", "Restaurants"] },
+            { name: "Sacramento", category: "places", frequency: 5, recency: 0.9, connections: ["Amir", "Airport", "California"] },
+            { name: "Afghanistan", category: "places", frequency: 10, recency: 0.8, connections: ["Nawaz", "Heritage", "Culture"] },
+            { name: "Jacobs Engineering", category: "places", frequency: 15, recency: 0.8, connections: ["Nawaz", "Work", "Civil Engineering"] },
+
+            // Projects (white/silver)
+            { name: "Flashcard App", category: "projects", frequency: 25, recency: 1.0, connections: ["Faihma", "NCLEX", "Spaced Repetition", "GitHub"] },
+            { name: "Practice Exam App", category: "projects", frequency: 20, recency: 1.0, connections: ["Faihma", "Galen College", "Testing", "GitHub"] },
+            { name: "Samantha Voice App", category: "projects", frequency: 30, recency: 0.9, connections: ["Voice Cloning", "The Her Movie", "Web Development"] },
+            { name: "TimeTracker", category: "projects", frequency: 18, recency: 0.7, connections: ["Engineering", "Time Management", "PWA"] },
+            { name: "Conversation RAG", category: "projects", frequency: 22, recency: 0.8, connections: ["ChromaDB", "Memory", "Search", "Indexing"] }
+        ];
+
+        // Color schemes for categories
+        const categoryColors = {
+            people: { base: 0xff6b35, glow: 0xff4500 },      // Warm orange-red
+            tech: { base: 0x4ecdc4, glow: 0x00bcd4 },        // Cool cyan
+            ideas: { base: 0x9c27b0, glow: 0xe91e63 },       // Purple-magenta
+            places: { base: 0x4caf50, glow: 0x8bc34a },      // Green
+            projects: { base: 0xffffff, glow: 0xe0e0e0 }     // White-silver
+        };
+
+        // Create node meshes and connections
+        const nodes = [];
+        const connections = [];
+        const nodeMap = new Map();
+        
+        // Create ambient particles
+        const particleGeometry = new THREE.BufferGeometry();
+        const particleCount = 200;
+        const positions = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            positions[i] = (Math.random() - 0.5) * 400;
+            positions[i + 1] = (Math.random() - 0.5) * 400;
+            positions[i + 2] = (Math.random() - 0.5) * 400;
+        }
+        
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particleMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 1,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending
+        });
+        const particles = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particles);
+
+        // Force-directed layout simulation
+        function calculateLayout() {
+            const positions = new Map();
+            
+            // Initialize random positions
+            memoryNodes.forEach((node, i) => {
+                const angle = (i / memoryNodes.length) * Math.PI * 2;
+                const radius = 50 + Math.random() * 100;
+                positions.set(node.name, {
+                    x: Math.cos(angle) * radius,
+                    y: (Math.random() - 0.5) * 80,
+                    z: Math.sin(angle) * radius,
+                    vx: 0, vy: 0, vz: 0
+                });
+            });
+
+            // Force simulation iterations
+            for (let iter = 0; iter < 1000; iter++) {
+                // Reset forces
+                positions.forEach(pos => {
+                    pos.fx = 0; pos.fy = 0; pos.fz = 0;
+                });
+
+                // Repulsion between all nodes
+                memoryNodes.forEach((nodeA, i) => {
+                    memoryNodes.forEach((nodeB, j) => {
+                        if (i !== j) {
+                            const posA = positions.get(nodeA.name);
+                            const posB = positions.get(nodeB.name);
+                            const dx = posA.x - posB.x;
+                            const dy = posA.y - posB.y;
+                            const dz = posA.z - posB.z;
+                            const distance = Math.sqrt(dx*dx + dy*dy + dz*dz) + 0.1;
+                            const force = 500 / (distance * distance);
+                            
+                            posA.fx += (dx / distance) * force;
+                            posA.fy += (dy / distance) * force;
+                            posA.fz += (dz / distance) * force;
+                        }
+                    });
+                });
+
+                // Attraction between connected nodes
+                memoryNodes.forEach(node => {
+                    const posA = positions.get(node.name);
+                    node.connections.forEach(connName => {
+                        const connectedNode = memoryNodes.find(n => n.name === connName);
+                        if (connectedNode) {
+                            const posB = positions.get(connName);
+                            const dx = posB.x - posA.x;
+                            const dy = posB.y - posA.y;
+                            const dz = posB.z - posA.z;
+                            const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                            const force = distance * 0.01;
+                            
+                            posA.fx += dx * force;
+                            posA.fy += dy * force;
+                            posA.fz += dz * force;
+                        }
+                    });
+                });
+
+                // Apply forces and damping
+                positions.forEach(pos => {
+                    pos.vx = (pos.vx + pos.fx) * 0.8;
+                    pos.vy = (pos.vy + pos.fy) * 0.8;
+                    pos.vz = (pos.vz + pos.fz) * 0.8;
+                    
+                    pos.x += pos.vx;
+                    pos.y += pos.vy;
+                    pos.z += pos.vz;
+                });
+            }
+            
+            return positions;
+        }
+
+        const nodePositions = calculateLayout();
+
+        // Create node meshes
+        memoryNodes.forEach(nodeData => {
+            const position = nodePositions.get(nodeData.name);
+            const colors = categoryColors[nodeData.category];
+            
+            // Node size based on frequency
+            const baseSize = 0.5 + (nodeData.frequency / 100) * 2;
+            
+            // Create glow effect with multiple spheres
+            const glowGeometry = new THREE.SphereGeometry(baseSize * 2, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: colors.glow,
+                transparent: true,
+                opacity: 0.1 + nodeData.recency * 0.15,
+                blending: THREE.AdditiveBlending
+            });
+            const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+
+            // Core sphere
+            const coreGeometry = new THREE.SphereGeometry(baseSize, 20, 20);
+            const coreMaterial = new THREE.MeshBasicMaterial({
+                color: colors.base,
+                transparent: true,
+                opacity: 0.8 + nodeData.recency * 0.2
+            });
+            const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
+
+            // Position the meshes
+            glowMesh.position.set(position.x, position.y, position.z);
+            coreMesh.position.set(position.x, position.y, position.z);
+            
+            scene.add(glowMesh);
+            scene.add(coreMesh);
+            
+            const nodeObj = {
+                data: nodeData,
+                glow: glowMesh,
+                core: coreMesh,
+                originalSize: baseSize,
+                time: Math.random() * Math.PI * 2
+            };
+            
+            nodes.push(nodeObj);
+            nodeMap.set(nodeData.name, nodeObj);
+        });
+
+        // Create connections
+        memoryNodes.forEach(nodeData => {
+            const sourceNode = nodeMap.get(nodeData.name);
+            nodeData.connections.forEach(connName => {
+                const targetNode = nodeMap.get(connName);
+                if (targetNode) {
+                    // Create connection line
+                    const geometry = new THREE.BufferGeometry().setFromPoints([
+                        sourceNode.core.position,
+                        targetNode.core.position
+                    ]);
+                    
+                    const material = new THREE.LineBasicMaterial({
+                        color: 0x444444,
+                        transparent: true,
+                        opacity: 0.2,
+                        blending: THREE.AdditiveBlending
+                    });
+                    
+                    const line = new THREE.Line(geometry, material);
+                    scene.add(line);
+                    connections.push({ source: sourceNode, target: targetNode, line });
+                }
+            });
+        });
+
+        // Camera setup
+        camera.position.set(0, 50, 200);
+        camera.lookAt(0, 0, 0);
+
+        // Mouse interaction
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+        let isDragging = false;
+        let previousMouse = new THREE.Vector2();
+        let rotationVelocity = { x: 0, y: 0 };
+        let hoveredNode = null;
+        const tooltip = document.getElementById('tooltip');
+
+        // Auto rotation when not interacting
+        let autoRotate = true;
+        let interactionTimeout;
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            if (isDragging) {
+                const deltaX = event.clientX - previousMouse.x;
+                const deltaY = event.clientY - previousMouse.y;
+                
+                rotationVelocity.x = deltaY * 0.01;
+                rotationVelocity.y = deltaX * 0.01;
+                
+                autoRotate = false;
+                clearTimeout(interactionTimeout);
+                interactionTimeout = setTimeout(() => { autoRotate = true; }, 3000);
+            } else {
+                // Hover detection
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(nodes.map(n => n.core));
+                
+                if (intersects.length > 0) {
+                    const intersectedNode = nodes.find(n => n.core === intersects[0].object);
+                    if (intersectedNode && intersectedNode !== hoveredNode) {
+                        hoveredNode = intersectedNode;
+                        showTooltip(event, intersectedNode);
+                    }
+                } else if (hoveredNode) {
+                    hoveredNode = null;
+                    hideTooltip();
+                }
+            }
+
+            previousMouse.x = event.clientX;
+            previousMouse.y = event.clientY;
+        }
+
+        function onMouseDown(event) {
+            isDragging = true;
+            previousMouse.x = event.clientX;
+            previousMouse.y = event.clientY;
+            document.body.style.cursor = 'grabbing';
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            document.body.style.cursor = 'grab';
+        }
+
+        function onWheel(event) {
+            camera.position.multiplyScalar(1 + event.deltaY * 0.001);
+            camera.position.clampLength(50, 500);
+        }
+
+        function onMouseClick(event) {
+            if (!isDragging && hoveredNode) {
+                expandNode(hoveredNode);
+            }
+        }
+
+        function showTooltip(event, node) {
+            const data = node.data;
+            tooltip.innerHTML = `
+                <strong>${data.name}</strong><br>
+                <em>${data.category.charAt(0).toUpperCase() + data.category.slice(1)}</em><br>
+                Connections: ${data.connections.length}<br>
+                Frequency: ${data.frequency} mentions
+            `;
+            tooltip.style.left = event.clientX + 10 + 'px';
+            tooltip.style.top = event.clientY - 10 + 'px';
+            tooltip.style.opacity = '1';
+        }
+
+        function hideTooltip() {
+            tooltip.style.opacity = '0';
+        }
+
+        function expandNode(node) {
+            // Create expansion effect - briefly enlarge the node
+            const expandScale = 1.5;
+            const duration = 500;
+            
+            const startTime = Date.now();
+            function animateExpand() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const scale = 1 + (expandScale - 1) * Math.sin(progress * Math.PI);
+                
+                node.core.scale.setScalar(scale);
+                node.glow.scale.setScalar(scale);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animateExpand);
+                } else {
+                    node.core.scale.setScalar(1);
+                    node.glow.scale.setScalar(1);
+                }
+            }
+            animateExpand();
+            
+            // Show connections briefly
+            connections.forEach(conn => {
+                if (conn.source === node || conn.target === node) {
+                    conn.line.material.opacity = 0.8;
+                    setTimeout(() => {
+                        conn.line.material.opacity = 0.2;
+                    }, 1000);
+                }
+            });
+        }
+
+        // Event listeners
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('wheel', onWheel);
+        window.addEventListener('click', onMouseClick);
+
+        // Touch events for mobile
+        let lastTouchDistance = 0;
+        
+        window.addEventListener('touchstart', (event) => {
+            if (event.touches.length === 1) {
+                isDragging = true;
+                previousMouse.x = event.touches[0].clientX;
+                previousMouse.y = event.touches[0].clientY;
+            } else if (event.touches.length === 2) {
+                const dx = event.touches[0].clientX - event.touches[1].clientX;
+                const dy = event.touches[0].clientY - event.touches[1].clientY;
+                lastTouchDistance = Math.sqrt(dx*dx + dy*dy);
+            }
+        });
+
+        window.addEventListener('touchmove', (event) => {
+            event.preventDefault();
+            if (event.touches.length === 1 && isDragging) {
+                const deltaX = event.touches[0].clientX - previousMouse.x;
+                const deltaY = event.touches[0].clientY - previousMouse.y;
+                
+                rotationVelocity.y = deltaX * 0.01;
+                rotationVelocity.x = deltaY * 0.01;
+                
+                previousMouse.x = event.touches[0].clientX;
+                previousMouse.y = event.touches[0].clientY;
+                
+                autoRotate = false;
+                clearTimeout(interactionTimeout);
+                interactionTimeout = setTimeout(() => { autoRotate = true; }, 3000);
+            } else if (event.touches.length === 2) {
+                const dx = event.touches[0].clientX - event.touches[1].clientX;
+                const dy = event.touches[0].clientY - event.touches[1].clientY;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                
+                if (lastTouchDistance > 0) {
+                    const scale = distance / lastTouchDistance;
+                    camera.position.multiplyScalar(1 / scale);
+                    camera.position.clampLength(50, 500);
+                }
+                lastTouchDistance = distance;
+            }
+        });
+
+        window.addEventListener('touchend', () => {
+            isDragging = false;
+            lastTouchDistance = 0;
+        });
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.001;
+
+            // Auto rotation
+            if (autoRotate) {
+                rotationVelocity.y = 0.005;
+                rotationVelocity.x *= 0.95;
+            }
+
+            // Apply rotation
+            if (Math.abs(rotationVelocity.x) > 0.001 || Math.abs(rotationVelocity.y) > 0.001) {
+                const spherical = new THREE.Spherical();
+                spherical.setFromVector3(camera.position);
+                spherical.theta += rotationVelocity.y;
+                spherical.phi += rotationVelocity.x;
+                spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+                camera.position.setFromSpherical(spherical);
+                camera.lookAt(0, 0, 0);
+            }
+
+            // Damping
+            rotationVelocity.x *= 0.95;
+            rotationVelocity.y *= 0.95;
+
+            // Animate nodes (breathing effect)
+            nodes.forEach((node, i) => {
+                node.time += 0.02;
+                const breathe = 1 + Math.sin(node.time) * 0.05;
+                const recencyPulse = 1 + node.data.recency * Math.sin(time * 2) * 0.1;
+                
+                node.core.scale.setScalar(breathe * recencyPulse);
+                node.glow.scale.setScalar(breathe * recencyPulse * 1.2);
+                
+                // Adjust opacity based on recency
+                node.core.material.opacity = 0.8 + node.data.recency * 0.2;
+                node.glow.material.opacity = 0.1 + node.data.recency * 0.15;
+            });
+
+            // Animate particles
+            const positions = particles.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i + 1] += Math.sin(time + i) * 0.1;
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+        // Fade out title after 3 seconds
+        setTimeout(() => {
+            document.getElementById('title').classList.add('fade-out');
+        }, 3000);
+
+        animate();
+    </script>
+</body>
+</html>
