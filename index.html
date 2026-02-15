@@ -79,6 +79,32 @@
             font-weight: 200;
         }
 
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1rem;
+            font-weight: 200;
+            opacity: 0.6;
+            z-index: 200;
+            text-align: center;
+        }
+
+        #loading .spinner {
+            width: 30px;
+            height: 30px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top: 2px solid rgba(255,255,255,0.6);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         @media (max-width: 768px) {
             #title {
                 font-size: 2rem;
@@ -102,17 +128,26 @@
     <div id="container">
         <div id="title">The Memory Palace</div>
         <div id="tooltip"></div>
+        <div id="loading">
+            <div class="spinner"></div>
+            Mapping the mind...
+        </div>
         <div id="controls">
             Drag to rotate • Scroll to zoom • Hover to explore • Click to expand
         </div>
     </div>
 
     <script>
+        if (typeof THREE === 'undefined') {
+            document.getElementById('loading').innerHTML = 'Failed to load 3D engine. Please refresh.';
+            throw new Error('Three.js not loaded');
+        }
         // Scene setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setClearColor(0x000000, 0);
         document.getElementById('container').appendChild(renderer.domElement);
 
@@ -218,8 +253,8 @@
                 });
             });
 
-            // Force simulation iterations
-            for (let iter = 0; iter < 1000; iter++) {
+            // Force simulation iterations (200 is enough for good layout, 1000 freezes mobile)
+            for (let iter = 0; iter < 200; iter++) {
                 // Reset forces
                 positions.forEach(pos => {
                     pos.fx = 0; pos.fy = 0; pos.fz = 0;
@@ -593,7 +628,8 @@
             renderer.render(scene, camera);
         }
 
-        // Fade out title after 3 seconds
+        // Remove loading, fade out title
+        document.getElementById('loading').style.display = 'none';
         setTimeout(() => {
             document.getElementById('title').classList.add('fade-out');
         }, 3000);
