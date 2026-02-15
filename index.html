@@ -105,6 +105,83 @@
             to { transform: rotate(360deg); }
         }
 
+        #detail-panel {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px 25px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(15px);
+            z-index: 50;
+            max-width: 350px;
+            width: 90%;
+            opacity: 0;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            transform: translateX(-50%) translateY(10px);
+            pointer-events: none;
+        }
+
+        #detail-panel.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+        }
+
+        #detail-panel h3 {
+            font-weight: 300;
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+        }
+
+        #detail-panel .category-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+        }
+
+        #detail-panel .connections-list {
+            font-size: 0.8rem;
+            font-weight: 200;
+            opacity: 0.7;
+            line-height: 1.6;
+        }
+
+        #legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 0.75rem;
+            font-weight: 200;
+            opacity: 0.5;
+            z-index: 50;
+            transition: opacity 0.3s;
+        }
+
+        #legend:hover {
+            opacity: 0.9;
+        }
+
+        #legend div {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        #legend .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
         @media (max-width: 768px) {
             #title {
                 font-size: 2rem;
@@ -131,6 +208,18 @@
         <div id="loading">
             <div class="spinner"></div>
             Mapping the mind...
+        </div>
+        <div id="legend">
+            <div><span class="dot" style="background:#ff6b35"></span> People</div>
+            <div><span class="dot" style="background:#4ecdc4"></span> Technology</div>
+            <div><span class="dot" style="background:#9c27b0"></span> Ideas</div>
+            <div><span class="dot" style="background:#4caf50"></span> Places</div>
+            <div><span class="dot" style="background:#ffffff"></span> Projects</div>
+        </div>
+        <div id="detail-panel">
+            <h3 id="detail-name"></h3>
+            <span class="category-badge" id="detail-category"></span>
+            <div class="connections-list" id="detail-connections"></div>
         </div>
         <div id="controls">
             Drag to rotate • Scroll to zoom • Hover to explore • Click to expand
@@ -458,8 +547,12 @@
         }
 
         function onMouseClick(event) {
-            if (!isDragging && hoveredNode) {
-                expandNode(hoveredNode);
+            if (!isDragging) {
+                if (hoveredNode) {
+                    expandNode(hoveredNode);
+                } else if (selectedNode) {
+                    deselectNode();
+                }
             }
         }
 
@@ -480,38 +573,84 @@
             tooltip.style.opacity = '0';
         }
 
+        let selectedNode = null;
+        
         function expandNode(node) {
-            // Create expansion effect - briefly enlarge the node
-            const expandScale = 1.5;
-            const duration = 500;
+            // Toggle selection
+            if (selectedNode === node) {
+                deselectNode();
+                return;
+            }
+            if (selectedNode) deselectNode();
+            selectedNode = node;
             
+            // Pulse animation
+            const expandScale = 1.4;
+            const duration = 400;
             const startTime = Date.now();
             function animateExpand() {
                 const elapsed = Date.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
                 const scale = 1 + (expandScale - 1) * Math.sin(progress * Math.PI);
-                
                 node.core.scale.setScalar(scale);
                 node.glow.scale.setScalar(scale);
-                
-                if (progress < 1) {
-                    requestAnimationFrame(animateExpand);
-                } else {
-                    node.core.scale.setScalar(1);
-                    node.glow.scale.setScalar(1);
-                }
+                if (progress < 1) requestAnimationFrame(animateExpand);
+                else { node.core.scale.setScalar(1); node.glow.scale.setScalar(1); }
             }
             animateExpand();
             
-            // Show connections briefly
+            // Highlight connections
             connections.forEach(conn => {
                 if (conn.source === node || conn.target === node) {
-                    conn.line.material.opacity = 0.8;
-                    setTimeout(() => {
-                        conn.line.material.opacity = 0.2;
-                    }, 1000);
+                    conn.line.material.opacity = 0.7;
+                    conn.line.material.color.setHex(categoryColors[node.data.category].glow);
+                } else {
+                    conn.line.material.opacity = 0.05;
                 }
             });
+            
+            // Dim other nodes
+            nodes.forEach(n => {
+                if (n !== node && !node.data.connections.includes(n.data.name)) {
+                    n.core.material.opacity = 0.15;
+                    n.glow.material.opacity = 0.03;
+                }
+            });
+            
+            // Show detail panel
+            const panel = document.getElementById('detail-panel');
+            const colors = categoryColors[node.data.category];
+            document.getElementById('detail-name').textContent = node.data.name;
+            const badge = document.getElementById('detail-category');
+            badge.textContent = node.data.category;
+            badge.style.background = `rgba(${hexToRgb(colors.base)}, 0.3)`;
+            badge.style.color = `#${colors.base.toString(16).padStart(6, '0')}`;
+            document.getElementById('detail-connections').textContent = 
+                'Connected to: ' + node.data.connections.join(' • ');
+            panel.classList.add('visible');
+        }
+        
+        function deselectNode() {
+            if (!selectedNode) return;
+            selectedNode = null;
+            
+            // Restore all connections
+            connections.forEach(conn => {
+                conn.line.material.opacity = 0.2;
+                conn.line.material.color.setHex(0x444444);
+            });
+            
+            // Restore all nodes
+            nodes.forEach(n => {
+                n.core.material.opacity = 0.8 + n.data.recency * 0.2;
+                n.glow.material.opacity = 0.1 + n.data.recency * 0.15;
+            });
+            
+            document.getElementById('detail-panel').classList.remove('visible');
+        }
+        
+        function hexToRgb(hex) {
+            return `${(hex >> 16) & 255}, ${(hex >> 8) & 255}, ${hex & 255}`;
         }
 
         // Event listeners
